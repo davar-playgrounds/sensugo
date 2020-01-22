@@ -1,0 +1,64 @@
+version: "3.4"
+
+# Consider using `from:` to build the base image
+# ref: https://github.com/docker/compose/issues/210#issuecomment-49578942
+
+# https://stackoverflow.com/a/48651071
+x-global: &global
+  SENSU_BACKEND_CLUSTER_ADMIN_USERNAME: 'admin'
+  SENSU_BACKEND_CLUSTER_ADMIN_PASSWORD: 'password'
+
+services:
+  sensu-backend:
+    hostname: sensu-backend
+    container_name: sensu-backend
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "-X", "GET", "http://0.0.0.0:8080/health" ]
+      timeout: 30s
+      interval: 5s
+      retries: 10
+    build:
+      context: .
+      args:
+        SENSU_VERSION: "5.16.1"
+    ports:
+      - 3000:3000 # Web interface
+      - 8080:8080 # sensuctl
+      - 8081:8081 # Websocket API for sensu-agent
+    volumes:
+      #- "./config/sensu/backend.yml:/etc/sensu/backend.yml"
+      #- "sensu-backend-data:/var/lib/sensu/etcd"
+      - "./run-sensu-backend.sh:/go/sensu-go/bin/run-sensu-backend.sh:ro"
+    environment:
+      <<: *global
+      #SENSU_ETCD_NAME: sensu-backend
+      #SENSU_ETCD_ADVERTISE_CLIENT_URLS: http://0.0.0.0:8081
+    command: "./bin/run-sensu-backend.sh"
+
+  sensuctl:
+    hostname: sensuctl
+    container_name: sensuctl
+    restart: unless-stopped
+    build:
+      context: .
+      args:
+        SENSU_VERSION: "5.16.1"
+    environment: *global
+    depends_on:
+      - sensu-backend
+    volumes:
+      - "./run-sensuctl.sh:/go/sensu-go/bin/run-sensuctl.sh:ro"
+    command: "./bin/run-sensuctl.sh"
+
+  #sensu-agent:
+  #  image: sensu/sensu:latest
+  #  ports:
+  #    - 3031:3031
+  #  command: "sensu-agent start --backend-url ws://sensu-backend:8081 --log-level debug --subscriptions webserver --api-host 0.0.0.0"
+  #  depends_on:
+  #    - sensu-backend
+
+volumes:
+  sensu-backend-data:
+    driver: local
