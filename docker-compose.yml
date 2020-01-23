@@ -1,64 +1,71 @@
-version: "3.4"
+version: '3.4'
 
-# Consider using `from:` to build the base image
-# ref: https://github.com/docker/compose/issues/210#issuecomment-49578942
+# YAML templating, requires docker-compose version >= 3.4
+# Base template, should only contain generic values (starts after image declaration).
+x-base: &base
+  restart: unless-stopped # Always restart the container (even on reboot), unless it was manually stopped.
+  build: # Use a generic local image to build sensu-go.
+    context: .
+    dockerfile: Dockerfile
+    args: 
+      SENSU_VERSION: '5.16.1' # The sensu-go version to build, see: Dockerfile.
 
-# https://stackoverflow.com/a/48651071
-x-global: &global
-  SENSU_BACKEND_CLUSTER_ADMIN_USERNAME: 'admin'
-  SENSU_BACKEND_CLUSTER_ADMIN_PASSWORD: 'password'
+# Secret environment template, backend-level secrets are defined here.
+x-secret-env: &secret-env
+  # Set the values SENSU_ADMIN_USERNAME and SENSU_ADMIN_PASSWORD in .env to override admin username and password.
+  # Note: If sensu-backend-data/ has been generated, your username and password will not be set. Delete the folder to regenerate (all data will be lost).
+  SENSU_BACKEND_CLUSTER_ADMIN_USERNAME: ${SENSU_ADMIN_USERNAME:-admin}
+  SENSU_BACKEND_CLUSTER_ADMIN_PASSWORD: ${SENSU_ADMIN_PASSWORD:-secret}
 
 services:
   sensu-backend:
+    <<: *base # Use the base template to generate service
+    environment: *secret-env # Use secret-env environment variables
+    image: sensu-backend
     hostname: sensu-backend
     container_name: sensu-backend
-    restart: unless-stopped
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "-X", "GET", "http://0.0.0.0:8080/health" ]
+    healthcheck: # Check if the sensu backend is up and running
+      test: [ 'CMD', 'curl', '-f', '-X', 'GET', 'http://0.0.0.0:8080/health' ]
       timeout: 30s
       interval: 5s
       retries: 10
-    build:
-      context: .
-      args:
-        SENSU_VERSION: "5.16.1"
     ports:
       - 3000:3000 # Web interface
       - 8080:8080 # sensuctl
       - 8081:8081 # Websocket API for sensu-agent
     volumes:
-      #- "./config/sensu/backend.yml:/etc/sensu/backend.yml"
-      #- "sensu-backend-data:/var/lib/sensu/etcd"
-      - "./run-sensu-backend.sh:/go/sensu-go/bin/run-sensu-backend.sh:ro"
-    environment:
-      <<: *global
-      #SENSU_ETCD_NAME: sensu-backend
-      #SENSU_ETCD_ADVERTISE_CLIENT_URLS: http://0.0.0.0:8081
-    command: "./bin/run-sensu-backend.sh"
+      #- './config/sensu/backend.yml:/etc/sensu/backend.yml'
+      #- 'sensu-backend-data:/var/lib/sensu/etcd'
+      - ./sensu-backend-data:/var/lib/sensu/sensu-backend/etcd # All sensu-backend data.
+      - ./sensu-backend.sh:/go/sensu-go/bin/sensu-backend.sh:ro # Shell script to start sensu-backend (used in `command`).
+    command: './bin/sensu-backend.sh'
 
+  # Authenticate with the sensu-backend for easy configuring, mostly for convenience.
+  # sensuctl can also be installed locally.
+  # TODO: Persisten storage and automatic script deployment.
   sensuctl:
+    <<: *base
+    environment: *secret-env
+    image: sensuctl
     hostname: sensuctl
     container_name: sensuctl
-    restart: unless-stopped
-    build:
-      context: .
-      args:
-        SENSU_VERSION: "5.16.1"
-    environment: *global
     depends_on:
-      - sensu-backend
+      - sensu-backend # Wait until the backend has started and passed the healthcheck.
     volumes:
-      - "./run-sensuctl.sh:/go/sensu-go/bin/run-sensuctl.sh:ro"
-    command: "./bin/run-sensuctl.sh"
+      - ./sensuctl.sh:/go/sensu-go/bin/sensuctl.sh:ro # Shell script to start sensuctl.
+    command: './bin/sensuctl.sh'
 
-  #sensu-agent:
-  #  image: sensu/sensu:latest
-  #  ports:
-  #    - 3031:3031
-  #  command: "sensu-agent start --backend-url ws://sensu-backend:8081 --log-level debug --subscriptions webserver --api-host 0.0.0.0"
-  #  depends_on:
-  #    - sensu-backend
+  # An agent that handles generic checks that don't belong on a specific entity, like if https://google.com is available.
+  sensu-agent:
+    <<: *base
+    image: sensu-agent
+    hostname: sensu-agent
+    container_name: sensu-agent
+    depends_on:
+      - sensu-backend # Wait until the backend has started and passed the healthcheck.
+      - sensuctl # Wait until sensuctl has started.
+    command: './bin/sensu-agent start --backend-url ws://sensu-backend:8081 --subscriptions schedules,rbac,roundrobin,proxy --log-level warn --keepalive-interval 5 --keepalive-warning-timeout 10'
 
-volumes:
-  sensu-backend-data:
-    driver: local
+#volumes:
+#  sensu-backend-data:
+#    driver: local
