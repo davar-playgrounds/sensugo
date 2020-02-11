@@ -1,4 +1,5 @@
 .env
 *.env
-sensu-backend-data/
-config/
+data
+.vscode
+default-data/storage/*/

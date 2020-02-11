@@ -6,16 +6,19 @@ x-base: &base
   restart: unless-stopped # Always restart the container (even on reboot), unless it was manually stopped.
   build: # Use a generic local image to build sensu-go.
     context: .
-    dockerfile: Dockerfile
-    args: 
+    dockerfile: ./default-data/docker/sensu-go/Dockerfile
+    args:
       SENSU_VERSION: '5.16.1' # The sensu-go version to build, see: Dockerfile.
 
 # Secret environment template, backend-level secrets are defined here.
 x-secret-env: &secret-env
-  # Set the values SENSU_ADMIN_USERNAME and SENSU_ADMIN_PASSWORD in .env to override admin username and password.
-  # Note: If sensu-backend-data/ has been generated, your username and password will not be set. Delete the folder to regenerate (all data will be lost).
-  SENSU_BACKEND_CLUSTER_ADMIN_USERNAME: ${SENSU_ADMIN_USERNAME:-admin}
-  SENSU_BACKEND_CLUSTER_ADMIN_PASSWORD: ${SENSU_ADMIN_PASSWORD:-secret}
+  # Set the values SENSU_BACKEND_CLUSTER_ADMIN_USERNAME and SENSU_BACKEND_CLUSTER_ADMIN_PASSWORD in .env to override admin username and password.
+  # Note: If default-data/storage/sensu-backend/ has been generated, your username and password will not be set. Delete the folder to regenerate (all data will be lost).
+  SENSU_BACKEND_CLUSTER_ADMIN_USERNAME: ${SENSU_BACKEND_CLUSTER_ADMIN_USERNAME:-admin}
+  SENSU_BACKEND_CLUSTER_ADMIN_PASSWORD: ${SENSU_BACKEND_CLUSTER_ADMIN_PASSWORD:-secret}
+  PATH: "${PATH}:/go/sensu-go/bin"
+  #GF_SERVER_ROOT_URL: ${GF_SERVER_ROOT_URL:-http://0.0.0.0}
+  #GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-${SENSU_BACKEND_CLUSTER_ADMIN_PASSWORD}}
 
 services:
   sensu-backend:
@@ -24,6 +27,7 @@ services:
     image: sensu-backend
     hostname: sensu-backend
     container_name: sensu-backend
+    #container_name: {{index (split .Name '/') 1}}
     healthcheck: # Check if the sensu backend is up and running
       test: [ 'CMD', 'curl', '-f', '-X', 'GET', 'http://0.0.0.0:8080/health' ]
       timeout: 30s
@@ -34,10 +38,10 @@ services:
       - 8080:8080 # sensuctl
       - 8081:8081 # Websocket API for sensu-agent
     volumes:
-      #- './config/sensu/backend.yml:/etc/sensu/backend.yml'
+      - ./data/config/sensu/backend.yml:/etc/sensu/backend.yml
       #- 'sensu-backend-data:/var/lib/sensu/etcd'
-      - ./sensu-backend-data:/var/lib/sensu/sensu-backend/etcd # All sensu-backend data.
-      - ./sensu-backend.sh:/go/sensu-go/bin/sensu-backend.sh:ro # Shell script to start sensu-backend (used in `command`).
+      - ./data/storage/sensu-backend:/var/lib/sensu/sensu-backend/etcd # All sensu-backend data.
+      - ./data/scripts/sensu-backend.sh:/go/sensu-go/bin/sensu-backend.sh:ro # Shell script to start sensu-backend (used in `command`).
     command: './bin/sensu-backend.sh'
 
   # Authenticate with the sensu-backend for easy configuring, mostly for convenience.
@@ -52,7 +56,7 @@ services:
     depends_on:
       - sensu-backend # Wait until the backend has started and passed the healthcheck.
     volumes:
-      - ./sensuctl.sh:/go/sensu-go/bin/sensuctl.sh:ro # Shell script to start sensuctl.
+      - ./data/scripts/sensuctl.sh:/go/sensu-go/bin/sensuctl.sh:ro # Shell script to start sensuctl.
     command: './bin/sensuctl.sh'
 
   # An agent that handles generic checks that don't belong on a specific entity, like if https://google.com is available.
@@ -63,8 +67,48 @@ services:
     container_name: sensu-agent
     depends_on:
       - sensu-backend # Wait until the backend has started and passed the healthcheck.
-      - sensuctl # Wait until sensuctl has started.
+    volumes:
+      - ./data/storage/sensu-agent:/usr/local/bin/sensu:ro
     command: './bin/sensu-agent start --backend-url ws://sensu-backend:8081 --subscriptions schedules,rbac,roundrobin,proxy --log-level warn --keepalive-interval 5 --keepalive-warning-timeout 10'
+
+  # Visualize metrics
+  # https://grafana.com/docs/grafana/latest/installation/docker/
+  #grafana:
+  #  environment:
+  #    <<: *secret-env
+  #    GF_INSTALL_PLUGINS: sensu-sensugo-datasource
+  #  #image: grafana
+  #  user: '1001'
+  #  image: grafana/grafana:6.5.3
+  #  hostname: grafana
+  #  container_name: grafana
+  #  restart: unless-stopped
+  #  ports:
+  #    - 3001:3000
+  #  #build:
+  #  #  context: .
+  #  #  dockerfile: ./data/docker/grafana/Dockerfile
+  #  depends_on:
+  #    - sensu-backend
+  #  volumes:
+  #    - ./data/config/grafana/grafana.ini:/etc/grafana/grafana.ini # GF_PATHS_CONFIG
+  #    #- ./data/storage/grafana/data:/var/lib/grafana # GF_PATHS_DATA, GF_PATHS_PLUGINS @/plugins
+  #    #- ./data/storage/grafana/home:/usr/share/grafana # GF_PATHS_HOME
+  #    #- ./data/storage/grafana/logs:/var/log/grafana # GF_PATHS_LOGS
+  #    #- ./data/storage/grafana/provisioning:/etc/grafana/provisioning # GF_PATHS_PROVISIONING
+  #    #- ./data/config/grafana/provisioning/dashboards/sensu.yaml:/etc/grafana/provisioning/dashboards/sensu.yaml
+  #    #- ./data/config/grafana/dashboards:/var/lib/grafana/dashboards
+
+  # Web server
+  #nginx-server:
+  #  image: nginx:latest
+  #  hostname: nginx-server
+  #  container_name: nginx-server
+  #  restart: unless-stopped
+  #  ports:
+  #    - 8000:80
+  #  volumes:
+  #    - ./data/config/nginx/nginx.conf:/etc/nginx/nginx.conf
 
 #volumes:
 #  sensu-backend-data:
