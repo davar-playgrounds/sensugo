@@ -1,66 +1,32 @@
-= SensuGo docker(-compose)
-ifdef::env-github[]
-:imagesdir:
- https://github.com/runarsf/sensugo/doc/img
-:tip-caption: :bulb:
-:note-caption: :information_source:
-:important-caption: :heavy_exclamation_mark:
-:caution-caption: :fire:
-:warning-caption: :warning:
-endif::[]
-ifndef::env-github[]
-:imagesdir: ./
-endif::[]
-:coderay-linenums-mode: inline
-:toc:
-:toc-placement!:
+# SensuGo docker(-compose)
 
-[NOTE]
-====
-It works on
-my machine!
-====
+### Getting started
 
-=== Getting started
-
-[source,bash,linenums]
------------------
+```bash
 git clone https://github.com/runarsf/sensugo.git
 cd sensugo
 cp -r default-data/ data
 docker-compose up -d
------------------
+```
 
-=== Sensu Go admin credentials
+### Sensu Go admin credentials
 
 - Default username: `admin`
 - Default password: `secret`
 - Create a new file called `.env` in the root of the repository:
-[source,bash,linenums]
-----------------------
-SENSU_ADMIN_USERNAME=username
-SENSU_ADMIN_PASSWORD=password
-# or
+```bash
 SENSU_BACKEND_CLUSTER_ADMIN_USERNAME=username
 SENSU_BACKEND_CLUSTER_ADMIN_PASSWORD=password
-----------------------
+```
 
-=== Start order
+### [Creating a read-only user](https://docs.sensu.io/sensu-go/latest/guides/create-read-only-user/)
 
-1. `sensu-backend` starts
-2. `sensuctl`, `sensu-agent`, and `influxdb` starts
-3. `influxdb-init` starts
-4. `influxdb-init` stops, and `grafana` starts
-
-==== (https://docs.sensu.io/sensu-go/latest/guides/create-read-only-user/)[Creating a read-only user^]
-
-[source,bash,linenums]
-----------------------
+```bash
 docker exec -it sensuctl bash
 ./bin/sensuctl user create bob --password='password' --groups=ops
 ./bin/sensuctl cluster-role create global-event-reader --verb=get,list --resource=events
 ./bin/sensuctl cluster-role-binding create ops-event-reader --cluster-role=global-event-reader --group=ops
-----------------------
+```
 
 <details>
   <summary>Resources</summary>
