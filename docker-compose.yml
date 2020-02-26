@@ -1,114 +1,92 @@
 version: '3.4'
 
 # YAML templating, requires docker-compose version >= 3.4
-# Base template, should only contain generic values (starts after image declaration).
-x-base: &base
+# SensuGo base template, should only contain generic values that are used when building SensuGo.
+x-sensugo: &sensugo
   restart: unless-stopped # Always restart the container (even on reboot), unless it was manually stopped.
-  build: # Use a generic local image to build sensu-go.
+  build: # Use a generic local image to build SensuGo.
     context: .
-    dockerfile: ./default-data/docker/sensu-go/Dockerfile
+    dockerfile: ./data/docker/sensu-go/Dockerfile
     args:
-      SENSU_VERSION: '5.16.1' # The sensu-go version to build, see: Dockerfile.
-
-# Secret environment template, backend-level secrets are defined here.
-x-secret-env: &secret-env
-  # Set the values SENSU_BACKEND_CLUSTER_ADMIN_USERNAME and SENSU_BACKEND_CLUSTER_ADMIN_PASSWORD in .env to override admin username and password.
-  # Note: If default-data/storage/sensu-backend/ has been generated, your username and password will not be set. Delete the folder to regenerate (all data will be lost).
-  SENSU_BACKEND_CLUSTER_ADMIN_USERNAME: ${SENSU_BACKEND_CLUSTER_ADMIN_USERNAME:-admin}
-  SENSU_BACKEND_CLUSTER_ADMIN_PASSWORD: ${SENSU_BACKEND_CLUSTER_ADMIN_PASSWORD:-secret}
-  PATH: "${PATH}:/go/sensu-go/bin"
-  #GF_SERVER_ROOT_URL: ${GF_SERVER_ROOT_URL:-http://0.0.0.0}
-  #GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-${SENSU_BACKEND_CLUSTER_ADMIN_PASSWORD}}
+      SENSU_VERSION: ${SENSU_VERSION:-5.16.1} # The sensu-go version to build, see: Dockerfile.
+  environment:
+    # Set the values SENSU_BACKEND_CLUSTER_ADMIN_USERNAME and SENSU_BACKEND_CLUSTER_ADMIN_PASSWORD in .env to override admin username and password.
+    # Note: If default-data/storage/sensu-backend/ has been generated, your username and password will not be set. Delete the folder to regenerate (all data will be lost).
+    SENSU_BACKEND_CLUSTER_ADMIN_USERNAME: ${SENSU_BACKEND_CLUSTER_ADMIN_USERNAME:-admin}
+    SENSU_BACKEND_CLUSTER_ADMIN_PASSWORD: ${SENSU_BACKEND_CLUSTER_ADMIN_PASSWORD:-secret}
 
 services:
   sensu-backend:
-    <<: *base # Use the base template to generate service
-    environment: *secret-env # Use secret-env environment variables
+    <<: *sensugo # Use the base template to generate service
     image: sensu-backend
     hostname: sensu-backend
     container_name: sensu-backend
     #container_name: {{index (split .Name '/') 1}}
-    healthcheck: # Check if the sensu backend is up and running
-      test: [ 'CMD', 'curl', '-f', '-X', 'GET', 'http://0.0.0.0:8080/health' ]
+    # docker inspect --format "{{json .State.Health }}" sensu-backend | jq
+    healthcheck: # Check if the sensu backend is up and running, depends_on will wait for this.
+      test: [ "CMD", "curl", "-f", "-X", "GET", "http://0.0.0.0:8080/health" ]
       timeout: 30s
       interval: 5s
       retries: 10
     ports:
-      - 3000:3000 # Web interface
+    #  - 3000:3000 # Web interface
       - 8080:8080 # sensuctl
       - 8081:8081 # Websocket API for sensu-agent
     volumes:
-      - ./data/config/sensu/backend.yml:/etc/sensu/backend.yml
-      #- 'sensu-backend-data:/var/lib/sensu/etcd'
-      - ./data/storage/sensu-backend:/var/lib/sensu/sensu-backend/etcd # All sensu-backend data.
       - ./data/scripts/sensu-backend.sh:/go/sensu-go/bin/sensu-backend.sh:ro # Shell script to start sensu-backend (used in `command`).
+      - ./data/config/sensu/backend.yml:/etc/sensu/backend.yml
+      - ./data/storage/sensu-backend:/var/lib/sensu/etcd
+      #- ./data/storage/sensu-backend:/var/lib/sensu/sensu-backend/etcd # All sensu-backend data.
     command: './bin/sensu-backend.sh'
 
   # Authenticate with the sensu-backend for easy configuring, mostly for convenience.
   # sensuctl can also be installed locally.
-  # TODO: Persisten storage and automatic script deployment.
-  sensuctl:
-    <<: *base
-    environment: *secret-env
-    image: sensuctl
-    hostname: sensuctl
-    container_name: sensuctl
-    depends_on:
-      - sensu-backend # Wait until the backend has started and passed the healthcheck.
-    volumes:
-      - ./data/scripts/sensuctl.sh:/go/sensu-go/bin/sensuctl.sh:ro # Shell script to start sensuctl.
-    command: './bin/sensuctl.sh'
+  #sensuctl:
+  #  <<: *sensugo
+  #  image: sensuctl
+  #  hostname: sensuctl
+  #  container_name: sensuctl
+  #  depends_on:
+  #    - sensu-backend # Wait until the backend has started and passed the healthcheck.
+  #  volumes:
+  #    - ./data/scripts/sensuctl.sh:/go/sensu-go/bin/sensuctl.sh:ro # Shell script to start sensuctl.
+  #  command: [ "./bin/sensuctl.sh" ]
 
-  # An agent that handles generic checks that don't belong on a specific entity, like if https://google.com is available.
+  # An agent that handles generic checks that doesn't belong on a specific entity.
   sensu-agent:
-    <<: *base
+    <<: *sensugo
     image: sensu-agent
     hostname: sensu-agent
     container_name: sensu-agent
     depends_on:
-      - sensu-backend # Wait until the backend has started and passed the healthcheck.
+      - sensu-backend
     volumes:
-      - ./data/storage/sensu-agent:/usr/local/bin/sensu:ro
-    command: './bin/sensu-agent start --backend-url ws://sensu-backend:8081 --subscriptions schedules,rbac,roundrobin,proxy --log-level warn --keepalive-interval 5 --keepalive-warning-timeout 10'
+      - ./data/scripts/sensuctl.sh:/go/sensu-go/bin/sensuctl.sh:ro # Shell script to start sensuctl.
+      - ./data/scripts/sensu-agent.sh:/go/sensu-go/bin/sensu-agent.sh:ro # Shell script to start sensu-agent.
+      - ./data/storage/sensu-agent:/usr/local/bin/sensu:ro # Used to put persisten files in the container, such as handlers, checks, etc.
+    command: [ "./bin/sensu-agent.sh" ]
+    #command: >
+    #  bin/sensu-agent start
+    #  --backend-url ws://sensu-backend:8081
+    #  --subscriptions schedules,rbac,roundrobin,proxy
+    #  --log-level warn \
+    #  --keepalive-interval 5
+    #  --keepalive-warning-timeout 10
 
-  # Visualize metrics
-  # https://grafana.com/docs/grafana/latest/installation/docker/
-  #grafana:
-  #  environment:
-  #    <<: *secret-env
-  #    GF_INSTALL_PLUGINS: sensu-sensugo-datasource
-  #  #image: grafana
-  #  user: '1001'
-  #  image: grafana/grafana:6.5.3
-  #  hostname: grafana
-  #  container_name: grafana
-  #  restart: unless-stopped
-  #  ports:
-  #    - 3001:3000
-  #  #build:
-  #  #  context: .
-  #  #  dockerfile: ./data/docker/grafana/Dockerfile
-  #  depends_on:
-  #    - sensu-backend
-  #  volumes:
-  #    - ./data/config/grafana/grafana.ini:/etc/grafana/grafana.ini # GF_PATHS_CONFIG
-  #    #- ./data/storage/grafana/data:/var/lib/grafana # GF_PATHS_DATA, GF_PATHS_PLUGINS @/plugins
-  #    #- ./data/storage/grafana/home:/usr/share/grafana # GF_PATHS_HOME
-  #    #- ./data/storage/grafana/logs:/var/log/grafana # GF_PATHS_LOGS
-  #    #- ./data/storage/grafana/provisioning:/etc/grafana/provisioning # GF_PATHS_PROVISIONING
-  #    #- ./data/config/grafana/provisioning/dashboards/sensu.yaml:/etc/grafana/provisioning/dashboards/sensu.yaml
-  #    #- ./data/config/grafana/dashboards:/var/lib/grafana/dashboards
-
-  # Web server
-  #nginx-server:
-  #  image: nginx:latest
-  #  hostname: nginx-server
-  #  container_name: nginx-server
-  #  restart: unless-stopped
-  #  ports:
-  #    - 8000:80
-  #  volumes:
-  #    - ./data/config/nginx/nginx.conf:/etc/nginx/nginx.conf
+  sensu-nginx:
+    image: sensu-nginx
+    hostname: sensu-nginx
+    container_name: sensu-nginx
+    build:
+      context: .
+      dockerfile: ./data/docker/nginx/Dockerfile
+    restart: unless-stopped
+    ports:
+      - 3000:3000
+    #  - 80:80
+    #  - 443:443
+    #volumesu: 
+    #  - ./data/config/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
 
 #volumes:
 #  sensu-backend-data:

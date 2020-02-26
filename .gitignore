@@ -1,5 +1,4 @@
 .env
 *.env
-data
 .vscode
-default-data/storage/*/
+data/storage/

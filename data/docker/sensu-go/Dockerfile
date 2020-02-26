@@ -3,14 +3,13 @@ FROM golang:1.13.6
 # What version of the sensu-go binaries to build.
 # Find version number under the releases tab on GitHub: https://github.com/sensu/sensu-go/releases
 # Also supports 'latest' to build the latest version of the binaries.
-ARG SENSU_VERSION=5.14.0
-
-# Install vim...
-#RUN apt-get update \
-# && apt-get install -y vim
+ARG SENSU_VERSION
+ENV SENSU_VERSION=${SENSU_VERSION:-}
 
 # Make sure you're in /go when running commands.
 WORKDIR /go
+
+RUN echo "SensuGo version: ${SENSU_VERSION}"
 
 # Build the sensu-go binaries.
 # Check if version argument equal to 'latest'.

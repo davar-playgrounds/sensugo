@@ -11,4 +11,4 @@
   --url 'http://sensu-backend:8080'
 
 # Keep container running after everything else finished
-tail -f /dev/null
+#tail -f /dev/null

@@ -1,0 +1,20 @@
+{
+  "type": "CheckConfig",
+  "api_version": "core/v2",
+  "metadata": {
+    "name": "vg.no",
+    "namespace": "default"
+  },
+  "spec": {
+    "command": "/usr/local/bin/sensu/check-http.sh https://vg.no",
+    "interval": 360,
+    "proxy_entity_name": "sensu-agent",
+    "publish": true,
+    "round_robin": false,
+    "subscriptions": [
+      "entity:sensu-agent"
+    ],
+    "handlers": [
+    ]
+  }
+}

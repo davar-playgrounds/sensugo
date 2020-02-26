@@ -1,44 +1,14 @@
-# SensuGo docker(-compose)
+# SensuGo OSS docker
 
-### Getting started
+Docker container for [Sensu Go OSS](https://sensu.io/features#compare) (Open-Source Software).
 
-```bash
-git clone https://github.com/runarsf/sensugo.git
-cd sensugo
-cp -r default-data/ data
-docker-compose up -d
-```
+## [Getting started](https://github.com/runarsf/sensugo/wiki#getting-started) 🚀
 
-### Sensu Go admin credentials
+## [Wiki](https://github.com/runarsf/sensugo/wiki) 📖
 
-- Default username: `admin`
-- Default password: `secret`
-- Create a new file called `.env` in the root of the repository:
-```bash
-SENSU_BACKEND_CLUSTER_ADMIN_USERNAME=username
-SENSU_BACKEND_CLUSTER_ADMIN_PASSWORD=password
-```
+See the wiki for examples, troubleshooting, etc.
 
-### [Creating a read-only user](https://docs.sensu.io/sensu-go/latest/guides/create-read-only-user/)
 
-```bash
-docker exec -it sensuctl bash
-./bin/sensuctl user create bob --password='password' --groups=ops
-./bin/sensuctl cluster-role create global-event-reader --verb=get,list --resource=events
-./bin/sensuctl cluster-role-binding create ops-event-reader --cluster-role=global-event-reader --group=ops
-```
+## License 📄
 
-<details>
-  <summary>Resources</summary>
-
-- https://docs.sensu.io/sensu-go/5.15/reference/backend/#configuration-via-environment-variables
-- https://github.com/sensu/sandbox/tree/master/sensu-go-docker
-- https://github.com/sensu/sensu-go/blob/master/docker-compose.yaml
-- https://docs.sensu.io/sensu-go/latest/installation/install-sensu/#3-initialize
-- https://docs.sensu.io/sensu-go/latest/installation/install-sensu/
-- Consider using `from:` to build the base image in addition to the Dockerfile
-  * https://github.com/docker/compose/issues/210#issuecomment-49578942
-- https://stackoverflow.com/a/48651071
-- https://docs.sensu.io/sensu-go/latest/guides/create-read-only-user/
-- This container does *not* work on 32-bit systems.
-</details>
+This project is licensed under the [GPL-3.0](https://spdx.org/licenses/GPL-3.0.html) - see the [LICENSE](https://github.com/runarsf/sensugo/blob/master/LICENSE) file for details.
