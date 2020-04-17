@@ -1,6 +1,7 @@
 #!/bin/bash
 # Enable bash built-ins (fg)
-set -o monitor
+#set -o monitor
+set -m
 
 # Start the backend in the background
 ./bin/sensu-backend start --state-dir /var/lib/sensu/sensu-backend --log-level info & # log level debug

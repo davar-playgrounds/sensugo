@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 ./bin/sensuctl.sh
 
 ./bin/sensu-agent start \

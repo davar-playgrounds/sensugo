@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Connect to the sensu-backend
 # This does not configure anything
 # Here, the -n flag triggers non-interactive mode. Run `sensuctl config view` to see your user profile.
